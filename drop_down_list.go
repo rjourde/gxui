@@ -9,15 +9,15 @@ type DropDownList interface {
 	Container
 	SetBubbleOverlay(BubbleOverlay)
 	BubbleOverlay() BubbleOverlay
-	Adapter() Adapter
-	SetAdapter(Adapter)
+	Adapter() ListAdapter
+	SetAdapter(ListAdapter)
 	BorderPen() Pen
 	SetBorderPen(Pen)
 	BackgroundBrush() Brush
 	SetBackgroundBrush(Brush)
-	Selected() AdapterItemId
-	Select(AdapterItemId)
-	OnSelectionChanged(func(AdapterItemId)) EventSubscription
+	Selected() AdapterItem
+	Select(AdapterItem)
+	OnSelectionChanged(func(AdapterItem)) EventSubscription
 	OnShowList(func()) EventSubscription
 	OnHideList(func()) EventSubscription
 }

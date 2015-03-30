@@ -6,8 +6,9 @@ package gxui
 
 import (
 	"fmt"
-	"github.com/google/gxui/math"
 	"reflect"
+
+	"github.com/google/gxui/math"
 )
 
 type Viewer interface {
@@ -20,39 +21,39 @@ type Stringer interface {
 
 type DefaultAdapter struct {
 	AdapterBase
-	data       reflect.Value
-	itemSize   math.Size
-	styleLabel func(Theme, Label)
+	items       reflect.Value
+	itemToIndex map[AdapterItem]int
+	size        math.Size
+	styleLabel  func(Theme, Label)
 }
 
 func CreateDefaultAdapter() *DefaultAdapter {
 	l := &DefaultAdapter{
-		itemSize: math.Size{W: 200, H: 16},
+		size: math.Size{W: 200, H: 16},
 	}
 	return l
 }
 
-func (a *DefaultAdapter) SetItemSizeAsLargest(theme Theme) {
+func (a *DefaultAdapter) SetSizeAsLargest(theme Theme) {
 	s := math.Size{}
 	font := theme.DefaultFont()
 	for i := 0; i < a.Count(); i++ {
-		e := a.data.Index(i).Interface()
-		switch t := e.(type) {
+		switch t := a.ItemAt(i).(type) {
 		case Viewer:
 			s = s.Max(t.View(theme).DesiredSize(math.ZeroSize, math.MaxSize))
+
 		case Stringer:
-			s = s.Max(font.Measure(t.String()))
+			s = s.Max(font.Measure(&TextBlock{
+				Runes: []rune(t.String()),
+			}))
+
 		default:
-			str := fmt.Sprintf("%+v", e)
-			s = s.Max(font.Measure(str))
+			s = s.Max(font.Measure(&TextBlock{
+				Runes: []rune(fmt.Sprintf("%+v", t)),
+			}))
 		}
 	}
-	a.SetItemSize(s)
-}
-
-func (a *DefaultAdapter) SetItemSize(s math.Size) {
-	a.itemSize = s
-	a.DataChanged()
+	a.SetSize(s)
 }
 
 func (a *DefaultAdapter) SetStyleLabel(f func(Theme, Label)) {
@@ -61,45 +62,54 @@ func (a *DefaultAdapter) SetStyleLabel(f func(Theme, Label)) {
 }
 
 func (a *DefaultAdapter) Count() int {
-	if a.data.IsValid() {
-		return a.data.Len()
-	} else {
+	if !a.items.IsValid() {
 		return 0
 	}
-}
 
-func (a *DefaultAdapter) IdOf(data interface{}) AdapterItemId {
-	for i := 0; i < a.Count(); i++ {
-		e := a.data.Index(i).Interface()
-		if e == data {
-			return a.ItemId(i)
-		}
+	switch a.items.Kind() {
+	case reflect.Slice, reflect.Array:
+		return a.items.Len()
+
+	default:
+		return 1
 	}
-	return InvalidAdapterItemId
 }
 
-func (a *DefaultAdapter) ValueOf(id AdapterItemId) interface{} {
-	index := a.ItemIndex(id)
-	return a.data.Index(index).Interface()
+func (a *DefaultAdapter) ItemAt(index int) AdapterItem {
+	count := a.Count()
+	if index < 0 || index >= count {
+		panic(fmt.Errorf("ItemAt index %d is out of bounds [%d, %d]",
+			index, 0, count-1))
+	}
+
+	switch a.items.Kind() {
+	case reflect.Slice, reflect.Array:
+		return a.items.Index(index).Interface()
+
+	default:
+		return a.items.Interface()
+	}
+
 }
 
-func (a *DefaultAdapter) ItemId(index int) AdapterItemId {
-	return AdapterItemId(index)
+func (a *DefaultAdapter) ItemIndex(item AdapterItem) int {
+	return a.itemToIndex[item]
 }
 
-func (a *DefaultAdapter) ItemIndex(id AdapterItemId) int {
-	return int(id)
+func (a *DefaultAdapter) Size(theme Theme) math.Size {
+	return a.size
 }
 
-func (a *DefaultAdapter) ItemSize(theme Theme) math.Size {
-	return a.itemSize
+func (a *DefaultAdapter) SetSize(s math.Size) {
+	a.size = s
+	a.DataChanged()
 }
 
 func (a *DefaultAdapter) Create(theme Theme, index int) Control {
-	e := a.data.Index(index).Interface()
-	switch t := e.(type) {
+	switch t := a.ItemAt(index).(type) {
 	case Viewer:
 		return t.View(theme)
+
 	case Stringer:
 		l := theme.CreateLabel()
 		l.SetMargin(math.ZeroSpacing)
@@ -109,11 +119,12 @@ func (a *DefaultAdapter) Create(theme Theme, index int) Control {
 			a.styleLabel(theme, l)
 		}
 		return l
+
 	default:
 		l := theme.CreateLabel()
 		l.SetMargin(math.ZeroSpacing)
 		l.SetMultiline(false)
-		l.SetText(fmt.Sprintf("%+v", e))
+		l.SetText(fmt.Sprintf("%+v", t))
 		if a.styleLabel != nil {
 			a.styleLabel(theme, l)
 		}
@@ -121,11 +132,15 @@ func (a *DefaultAdapter) Create(theme Theme, index int) Control {
 	}
 }
 
-func (a *DefaultAdapter) Data() interface{} {
-	return a.data.Interface()
+func (a *DefaultAdapter) Items() interface{} {
+	return a.items.Interface()
 }
 
-func (a *DefaultAdapter) SetData(data interface{}) {
-	a.data = reflect.ValueOf(data)
+func (a *DefaultAdapter) SetItems(items interface{}) {
+	a.items = reflect.ValueOf(items)
+	a.itemToIndex = make(map[AdapterItem]int)
+	for idx := 0; idx < a.Count(); idx++ {
+		a.itemToIndex[a.ItemAt(idx)] = idx
+	}
 	a.DataReplaced()
 }

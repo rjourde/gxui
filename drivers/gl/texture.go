@@ -8,18 +8,18 @@ import (
 	"github.com/google/gxui/math"
 	"image"
 
-	"github.com/go-gl/gl/v3.2-core/gl"
+	"github.com/go-gl/gl/v2.1/gl"
 )
 
-type Texture struct {
+type texture struct {
 	refCounted
 	image        image.Image
 	pixelsPerDip float32
 	flipY        bool
 }
 
-func CreateTexture(img image.Image, pixelsPerDip float32) *Texture {
-	t := &Texture{
+func newTexture(img image.Image, pixelsPerDip float32) *texture {
+	t := &texture{
 		image:        img,
 		pixelsPerDip: pixelsPerDip,
 	}
@@ -28,28 +28,32 @@ func CreateTexture(img image.Image, pixelsPerDip float32) *Texture {
 }
 
 // gxui.Texture compliance
-func (t *Texture) Image() image.Image {
+func (t *texture) Image() image.Image {
 	return t.image
 }
 
-func (t *Texture) Size() math.Size {
+func (t *texture) Size() math.Size {
 	return t.SizePixels().ScaleS(1.0 / t.pixelsPerDip)
 }
 
-func (t *Texture) SizePixels() math.Size {
+func (t *texture) SizePixels() math.Size {
 	s := t.image.Bounds().Size()
 	return math.Size{W: s.X, H: s.Y}
 }
 
-func (t *Texture) FlipY() bool {
+func (t *texture) FlipY() bool {
 	return t.flipY
 }
 
-func (t *Texture) SetFlipY(flipY bool) {
+func (t *texture) SetFlipY(flipY bool) {
 	t.flipY = flipY
 }
 
-func (t *Texture) CreateContext() TextureContext {
+func (t *texture) Release() {
+	t.release()
+}
+
+func (t *texture) newContext() *textureContext {
 	var fmt uint32
 	var data interface{}
 	var pma bool
@@ -80,9 +84,9 @@ func (t *Texture) CreateContext() TextureContext {
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
 	gl.BindTexture(gl.TEXTURE_2D, 0)
-	CheckError()
+	checkError()
 
-	return TextureContext{
+	return &textureContext{
 		texture:    texture,
 		sizePixels: t.Size(),
 		flipY:      t.flipY,
@@ -90,29 +94,14 @@ func (t *Texture) CreateContext() TextureContext {
 	}
 }
 
-type TextureContext struct {
+type textureContext struct {
 	texture    uint32
 	sizePixels math.Size
 	flipY      bool
 	pma        bool
 }
 
-func (c TextureContext) Texture() uint32 {
-	return c.texture
-}
-
-func (c TextureContext) SizePixels() math.Size {
-	return c.sizePixels
-}
-
-func (c TextureContext) FlipY() bool {
-	return c.flipY
-}
-
-func (c TextureContext) PremultipliedAlpha() bool {
-	return c.pma
-}
-
-func (c *TextureContext) Destroy() {
+func (c *textureContext) destroy() {
 	gl.DeleteTextures(1, &c.texture)
+	c.texture = 0
 }

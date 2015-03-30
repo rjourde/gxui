@@ -6,63 +6,57 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"image"
+	"image/draw"
+	_ "image/jpeg"
+	_ "image/png"
+	"os"
+
 	"github.com/google/gxui"
 	"github.com/google/gxui/drivers/gl"
-	"github.com/google/gxui/math"
+	"github.com/google/gxui/samples/flags"
 	"github.com/google/gxui/themes/dark"
-	"image"
-	"image/color"
-	"io/ioutil"
-	gomath "math"
 )
 
-var data = flag.String("data", "", "path to data")
-var file = flag.String("file", "", "path to file")
-var width = flag.Int("width", 0, "width of the image")
-var height = flag.Int("height", 0, "height of the image")
-var imageType = flag.String("type", "rgba", "The type of the image (rgba or depth)")
-
 func appMain(driver gxui.Driver) {
-	theme := dark.CreateTheme(driver)
-	img := theme.CreateImage()
-	window := theme.CreateWindow(800, 600, "Image viewer")
-	window.AddChild(img)
-
-	raw, _ := ioutil.ReadFile(*file)
-	bmp := image.NewRGBA(image.Rect(0, 0, *width, *height))
-	if *imageType == "rgba" {
-		bmp.Pix = raw
-	} else if *imageType == "depth" {
-		depthToImage(bmp, *width, *height, raw)
+	args := flag.Args()
+	if len(args) != 1 {
+		fmt.Print("usage: image_viewer image-path\n")
+		os.Exit(1)
 	}
 
-	texture := driver.CreateTexture(bmp, 1)
+	file := args[0]
+	f, err := os.Open(file)
+	if err != nil {
+		fmt.Printf("Failed to open image '%s': %v\n", file, err)
+		os.Exit(1)
+	}
+
+	source, _, err := image.Decode(f)
+	if err != nil {
+		fmt.Printf("Failed to read image '%s': %v\n", file, err)
+		os.Exit(1)
+	}
+
+	theme := dark.CreateTheme(driver)
+	img := theme.CreateImage()
+
+	mx := source.Bounds().Max
+	window := theme.CreateWindow(mx.X, mx.Y, "Image viewer")
+	window.SetScale(flags.DefaultScaleFactor)
+	window.AddChild(img)
+
+	// Copy the image to a RGBA format before handing to a gxui.Texture
+	rgba := image.NewRGBA(source.Bounds())
+	draw.Draw(rgba, source.Bounds(), source, image.ZP, draw.Src)
+	texture := driver.CreateTexture(rgba, 1)
 	img.SetTexture(texture)
 
 	window.OnClose(driver.Terminate)
-	gxui.EventLoop(driver)
-}
-
-func depthToImage(img *image.RGBA, w int, h int, buffer []byte) {
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			bits := (uint32(buffer[3]) << 24) | (uint32(buffer[2]) << 16) | (uint32(buffer[1]) << 8) | (uint32(buffer[0]) << 0)
-			depth := gomath.Float32frombits(bits)
-			buffer = buffer[4:]
-
-			d := 0.01 / (1.0 - depth)
-			c := color.RGBA{
-				R: byte(math.Cosf(d+math.TwoPi*0.000)*127.0 + 128.0),
-				G: byte(math.Cosf(d+math.TwoPi*0.333)*127.0 + 128.0),
-				B: byte(math.Cosf(d+math.TwoPi*0.666)*127.0 + 128.0),
-				A: byte(0xFF),
-			}
-			img.Set(x, y, c)
-		}
-	}
 }
 
 func main() {
 	flag.Parse()
-	gl.StartDriver(*data, appMain)
+	gl.StartDriver(appMain)
 }

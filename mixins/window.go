@@ -44,11 +44,18 @@ type Window struct {
 func (w *Window) requestUpdate() {
 	if !w.updatePending {
 		w.updatePending = true
-		w.driver.Events() <- w.update
+		w.driver.Call(w.update)
 	}
 }
 
 func (w *Window) update() {
+	if !w.Attached() {
+		// Window was detached between requestUpdate() and update()
+		w.updatePending = false
+		w.layoutPending = false
+		w.drawPending = false
+		return
+	}
 	w.updatePending = false
 	if w.layoutPending {
 		w.layoutPending = false
@@ -85,12 +92,16 @@ func (w *Window) Init(outer WindowOuter, driver gxui.Driver, width, height int, 
 }
 
 func (w *Window) Draw() gxui.Canvas {
-	c := w.driver.CreateCanvas(w.viewport.SizeDips())
-	w.outer.Paint(c)
-	c.Complete()
-	w.viewport.SetCanvas(c)
-	c.Release()
-	return c
+	if s := w.viewport.SizeDips(); s != math.ZeroSize {
+		c := w.driver.CreateCanvas(w.viewport.SizeDips())
+		w.outer.Paint(c)
+		c.Complete()
+		w.viewport.SetCanvas(c)
+		c.Release()
+		return c
+	} else {
+		return nil
+	}
 }
 
 func (w *Window) LayoutChildren() {
@@ -120,6 +131,14 @@ func (w *Window) Title() string {
 
 func (w *Window) SetTitle(t string) {
 	w.viewport.SetTitle(t)
+}
+
+func (w *Window) Scale() float32 {
+	return w.viewport.Scale()
+}
+
+func (w *Window) SetScale(scale float32) {
+	w.viewport.SetScale(scale)
 }
 
 func (w *Window) Show() {

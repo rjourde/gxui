@@ -5,14 +5,11 @@
 package main
 
 import (
-	"flag"
-
 	"github.com/google/gxui"
 	"github.com/google/gxui/drivers/gl"
+	"github.com/google/gxui/samples/flags"
 	"github.com/google/gxui/themes/dark"
 )
-
-var data = flag.String("data", "", "path to data")
 
 // Create a PanelHolder with a 3 panels
 func panelHolder(name string, theme gxui.Theme) gxui.PanelHolder {
@@ -60,12 +57,11 @@ func appMain(driver gxui.Driver) {
 	vSplitter.AddChild(splitterCD)
 
 	window := theme.CreateWindow(800, 600, "Panels")
+	window.SetScale(flags.DefaultScaleFactor)
 	window.AddChild(vSplitter)
 	window.OnClose(driver.Terminate)
-	gxui.EventLoop(driver)
 }
 
 func main() {
-	flag.Parse()
-	gl.StartDriver(*data, appMain)
+	gl.StartDriver(appMain)
 }

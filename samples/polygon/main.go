@@ -5,15 +5,12 @@
 package main
 
 import (
-	"flag"
-
 	"github.com/google/gxui"
 	"github.com/google/gxui/drivers/gl"
 	"github.com/google/gxui/math"
+	"github.com/google/gxui/samples/flags"
 	"github.com/google/gxui/themes/dark"
 )
-
-var data = flag.String("data", "", "path to data")
 
 func buildStar(theme gxui.Theme, center math.Point, radius, rotation float32, points int) gxui.Image {
 	p := make(gxui.Polygon, points*2)
@@ -69,6 +66,7 @@ func appMain(driver gxui.Driver) {
 	theme := dark.CreateTheme(driver)
 	image := theme.CreateImage()
 	window := theme.CreateWindow(800, 600, "Polygon")
+	window.SetScale(flags.DefaultScaleFactor)
 	window.AddChild(image)
 
 	window.AddChild(buildStar(theme, math.Point{X: 100, Y: 100}, 50, 0.2, 6))
@@ -80,10 +78,8 @@ func appMain(driver gxui.Driver) {
 	window.AddChild(buildMoon(theme, math.Point{X: 400, Y: 300}, 200))
 
 	window.OnClose(driver.Terminate)
-	gxui.EventLoop(driver)
 }
 
 func main() {
-	flag.Parse()
-	gl.StartDriver(*data, appMain)
+	gl.StartDriver(appMain)
 }

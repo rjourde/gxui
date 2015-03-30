@@ -96,7 +96,7 @@ func (p *PanelHolder) Init(outer PanelHolderOuter, theme gxui.Theme) {
 	p.theme = theme
 
 	p.tabLayout = theme.CreateLinearLayout()
-	p.tabLayout.SetOrientation(gxui.Horizontal)
+	p.tabLayout.SetDirection(gxui.LeftToRight)
 	p.Container.AddChild(p.tabLayout)
 	p.SetMargin(math.Spacing{L: 1, T: 2, R: 1, B: 1})
 	p.SetMouseEventTarget(true) // For drag-drop targets
@@ -180,9 +180,9 @@ func (p *PanelHolder) RemovePanel(panel gxui.Control) {
 }
 
 func (p *PanelHolder) Select(index int) {
-	if index < 0 || index >= p.PanelCount() {
+	if index >= p.PanelCount() {
 		panic(fmt.Errorf("Index %d is out of bounds. Acceptable range: [%d - %d]",
-			index, 0, p.PanelCount()-1))
+			index, -1, p.PanelCount()-1))
 	}
 
 	if p.selected.Panel != nil {

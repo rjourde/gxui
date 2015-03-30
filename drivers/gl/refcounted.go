@@ -13,18 +13,13 @@ import (
 
 const debugTrackReferences = false
 
-type RefCounted interface {
-	AddRef()
-	Release()
-}
-
 type refCounted struct {
 	refCount int32
 	history  []string
 }
 
 func verifyRefCountIsZero(r *refCounted) {
-	if r.refCount != 0 {
+	if r.alive() {
 		panic(fmt.Errorf("RefCounted object was garbage collected with a reference count of %d.\n%s",
 			r.refCount, strings.Join(r.history, "\n")))
 	}
@@ -40,8 +35,8 @@ func (r *refCounted) init() {
 	}
 }
 
-func (r *refCounted) AddRef() {
-	r.AssertAlive("AddRef")
+func (r *refCounted) addRef() {
+	r.assertAlive("AddRef")
 	count := atomic.AddInt32(&r.refCount, 1)
 
 	if debugTrackReferences {
@@ -51,12 +46,8 @@ func (r *refCounted) AddRef() {
 	}
 }
 
-func (r *refCounted) Release() {
-	r.release()
-}
-
 func (r *refCounted) release() bool {
-	r.AssertAlive("Release")
+	r.assertAlive("Release")
 	count := atomic.AddInt32(&r.refCount, -1)
 
 	if debugTrackReferences {
@@ -67,12 +58,12 @@ func (r *refCounted) release() bool {
 	return count == 0
 }
 
-func (r *refCounted) Alive() bool {
-	return r.refCount > 0
+func (r *refCounted) alive() bool {
+	return atomic.LoadInt32(&r.refCount) > 0
 }
 
-func (r *refCounted) AssertAlive(funcName string) {
-	if !r.Alive() {
+func (r *refCounted) assertAlive(funcName string) {
+	if !r.alive() {
 		if debugTrackReferences {
 			panic(fmt.Errorf("Attempting to call %s()) on a fully released object.\n%s",
 				funcName, strings.Join(r.history, "\n")))

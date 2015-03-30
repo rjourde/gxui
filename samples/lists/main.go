@@ -5,20 +5,18 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 
 	"github.com/google/gxui"
 	"github.com/google/gxui/drivers/gl"
 	"github.com/google/gxui/math"
+	"github.com/google/gxui/samples/flags"
 	"github.com/google/gxui/themes/dark"
 )
 
-var data = flag.String("data", "", "path to data")
-
 // Number picker uses the gxui.DefaultAdapter for driving a list
-func numberPicker(theme gxui.Theme) gxui.Control {
-	data := []string{
+func numberPicker(theme gxui.Theme, overlay gxui.BubbleOverlay) gxui.Control {
+	items := []string{
 		"zero", "one", "two", "three", "four", "five",
 		"six", "seven", "eight", "nine", "ten",
 		"eleven", "twelve", "thirteen", "fourteen", "fifteen",
@@ -26,14 +24,19 @@ func numberPicker(theme gxui.Theme) gxui.Control {
 	}
 
 	adapter := gxui.CreateDefaultAdapter()
-	adapter.SetData(data)
+	adapter.SetItems(items)
 
 	layout := theme.CreateLinearLayout()
-	layout.SetOrientation(gxui.Vertical)
+	layout.SetDirection(gxui.TopToBottom)
 
 	label0 := theme.CreateLabel()
 	label0.SetText("Numbers:")
 	layout.AddChild(label0)
+
+	dropList := theme.CreateDropDownList()
+	dropList.SetAdapter(adapter)
+	dropList.SetBubbleOverlay(overlay)
+	layout.AddChild(dropList)
 
 	list := theme.CreateList()
 	list.SetAdapter(adapter)
@@ -48,10 +51,17 @@ func numberPicker(theme gxui.Theme) gxui.Control {
 	selected := theme.CreateLabel()
 	layout.AddChild(selected)
 
-	list.OnSelectionChanged(func(id gxui.AdapterItemId) {
-		if id != gxui.InvalidAdapterItemId {
-			selected.SetText(fmt.Sprintf("%s - %d", adapter.ValueOf(id), id))
+	dropList.OnSelectionChanged(func(item gxui.AdapterItem) {
+		if list.Selected() != item {
+			list.Select(item)
 		}
+	})
+
+	list.OnSelectionChanged(func(item gxui.AdapterItem) {
+		if dropList.Selected() != item {
+			dropList.Select(item)
+		}
+		selected.SetText(fmt.Sprintf("%s - %d", item, adapter.ItemIndex(item)))
 	})
 
 	return layout
@@ -61,18 +71,22 @@ type customAdapter struct {
 	gxui.AdapterBase
 }
 
-func (a *customAdapter) ItemSize(theme gxui.Theme) math.Size {
-	return math.Size{W: 100, H: 100}
-}
 func (a *customAdapter) Count() int {
 	return 1000
 }
-func (a *customAdapter) ItemId(index int) gxui.AdapterItemId {
-	return gxui.AdapterItemId(index)
+
+func (a *customAdapter) ItemAt(index int) gxui.AdapterItem {
+	return index // This adapter uses integer indices as AdapterItems
 }
-func (a *customAdapter) ItemIndex(id gxui.AdapterItemId) int {
-	return int(id)
+
+func (a *customAdapter) ItemIndex(item gxui.AdapterItem) int {
+	return item.(int) // Inverse of ItemAt()
 }
+
+func (a *customAdapter) Size(theme gxui.Theme) math.Size {
+	return math.Size{W: 100, H: 100}
+}
+
 func (a *customAdapter) Create(theme gxui.Theme, index int) gxui.Control {
 	phase := float32(index) / 1000
 	c := gxui.Color{
@@ -102,7 +116,7 @@ func (a *customAdapter) Create(theme gxui.Theme, index int) gxui.Control {
 // Color picker uses the customAdapter for driving a list
 func colorPicker(theme gxui.Theme) gxui.Control {
 	layout := theme.CreateLinearLayout()
-	layout.SetOrientation(gxui.Vertical)
+	layout.SetDirection(gxui.TopToBottom)
 
 	label0 := theme.CreateLabel()
 	label0.SetText("Color palette:")
@@ -124,9 +138,10 @@ func colorPicker(theme gxui.Theme) gxui.Control {
 	selected.SetExplicitSize(math.Size{W: 32, H: 32})
 	layout.AddChild(selected)
 
-	list.OnSelectionChanged(func(id gxui.AdapterItemId) {
-		if id != gxui.InvalidAdapterItemId {
-			selected.SetBackgroundBrush(list.Item(id).(gxui.Image).BackgroundBrush())
+	list.OnSelectionChanged(func(item gxui.AdapterItem) {
+		if item != nil {
+			control := list.ItemControl(item)
+			selected.SetBackgroundBrush(control.(gxui.Image).BackgroundBrush())
 		}
 	})
 
@@ -136,18 +151,20 @@ func colorPicker(theme gxui.Theme) gxui.Control {
 func appMain(driver gxui.Driver) {
 	theme := dark.CreateTheme(driver)
 
+	overlay := theme.CreateBubbleOverlay()
+
 	holder := theme.CreatePanelHolder()
-	holder.AddPanel(numberPicker(theme), "Default adapter")
+	holder.AddPanel(numberPicker(theme, overlay), "Default adapter")
 	holder.AddPanel(colorPicker(theme), "Custom adapter")
 
 	window := theme.CreateWindow(800, 600, "Lists")
+	window.SetScale(flags.DefaultScaleFactor)
 	window.AddChild(holder)
+	window.AddChild(overlay)
 	window.OnClose(driver.Terminate)
 	window.SetPadding(math.Spacing{L: 10, T: 10, R: 10, B: 10})
-	gxui.EventLoop(driver)
 }
 
 func main() {
-	flag.Parse()
-	gl.StartDriver(*data, appMain)
+	gl.StartDriver(appMain)
 }

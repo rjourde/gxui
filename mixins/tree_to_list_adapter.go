@@ -18,70 +18,80 @@ type TreeToListAdapter struct {
 	root               *TreeInternalNode
 }
 
-func CreateTreeToListAdapter(inner gxui.TreeAdapter, ceb CreateExpandButton) *TreeToListAdapter {
+func CreateTreeToListAdapter(adapter gxui.TreeAdapter, ceb CreateExpandButton) *TreeToListAdapter {
 	outer := &TreeToListAdapter{
 		createExpandButton: ceb,
-		adapter:            inner,
-		root:               CreateTreeInternalRoot(inner),
+		adapter:            adapter,
+		root:               CreateTreeInternalRoot(adapter),
 	}
-	inner.OnDataReplaced(func() {
-		outer.root = CreateTreeInternalRoot(inner)
+	adapter.OnDataReplaced(func() {
+		outer.root = CreateTreeInternalRoot(adapter)
 		outer.DataReplaced()
 	})
-	inner.OnDataChanged(outer.DataChanged)
+	adapter.OnDataChanged(outer.DataChanged)
 
 	return outer
 }
 
-func (a TreeToListAdapter) Collapse(id gxui.AdapterItemId) gxui.AdapterItemId {
-	n, i, _ := a.root.FindById(id)
+func (a TreeToListAdapter) Collapse(item gxui.AdapterItem) gxui.AdapterItem {
+	n, i, _ := a.root.FindByItem(item)
 	if n.Child(i).Collapse() {
-		a.DataChanged()
-		return n.Child(i).Id()
+		return n.Child(i).Item()
 	}
 	if n != a.root && n.Collapse() {
+		return n.Item()
+	}
+	return item
+}
+
+func (a TreeToListAdapter) Expand(item gxui.AdapterItem) bool {
+	if n, i, _ := a.root.FindByItem(item); n != nil {
+		return n.Child(i).Expand()
+	} else {
+		return false
+	}
+}
+
+func (a TreeToListAdapter) ExpandAllParents(item gxui.AdapterItem) {
+	changed := false
+	n := a.DeepestVisibleAncestor(item)
+	for n != nil && n != item {
+		if a.Expand(n) {
+			changed = true
+			n = a.DeepestVisibleAncestor(item)
+		} else {
+			break // Already expanded, nothing more to do.
+		}
+	}
+	if changed {
 		a.DataChanged()
-		return n.Id()
 	}
-	return id
 }
 
-func (a TreeToListAdapter) Expand(id gxui.AdapterItemId) bool {
-	n, i, _ := a.root.FindById(id)
-	if n.Child(i).Expand() {
-		a.DataChanged()
-		return true
+func (a TreeToListAdapter) DeepestVisibleAncestor(item gxui.AdapterItem) gxui.AdapterItem {
+	if n, i, _ := a.root.FindByItem(item); n != nil {
+		child := n.Child(i)
+		return child.Item()
+	} else {
+		return nil
 	}
-	return false
-}
-
-func (a TreeToListAdapter) ExpandAllParents(id gxui.AdapterItemId) bool {
-	for a.Expand(a.DeepestVisibleAncestor(id)) {
-	}
-	return false
-}
-
-func (a TreeToListAdapter) DeepestVisibleAncestor(id gxui.AdapterItemId) gxui.AdapterItemId {
-	n, i, _ := a.root.FindById(id)
-	child := n.Child(i)
-	return child.Id()
 }
 
 // Adapter compliance
-func (a TreeToListAdapter) ItemSize(theme gxui.Theme) math.Size {
-	return a.adapter.ItemSize(theme)
-}
-
 func (a TreeToListAdapter) Count() int {
-	return a.root.childCount
+	return a.root.descendants
 }
 
-func (a TreeToListAdapter) ItemId(index int) gxui.AdapterItemId {
-	return a.root.ItemId(index)
+func (a TreeToListAdapter) ItemAt(index int) gxui.AdapterItem {
+	return a.root.ItemAt(index)
 }
 
-func (a TreeToListAdapter) ItemIndex(id gxui.AdapterItemId) int {
-	return a.root.ItemIndex(id)
+func (a TreeToListAdapter) ItemIndex(item gxui.AdapterItem) int {
+	return a.root.ItemIndex(item)
+}
+
+func (a TreeToListAdapter) Size(theme gxui.Theme) math.Size {
+	return a.adapter.Size(theme)
 }
 
 func (a TreeToListAdapter) Create(theme gxui.Theme, index int) gxui.Control {
@@ -94,11 +104,11 @@ func (a TreeToListAdapter) Create(theme gxui.Theme, index int) gxui.Control {
 		a.DataChanged()
 	})
 
-	control := n.adapterNode.Create(theme, i)
+	control := n.node.Create(theme, i)
 
 	layout := theme.CreateLinearLayout()
-	layout.SetPadding(math.Spacing{L: d * 16, T: 0, R: 0, B: 0})
-	layout.SetOrientation(gxui.Horizontal)
+	layout.SetPadding(math.Spacing{L: d * 16})
+	layout.SetDirection(gxui.LeftToRight)
 	layout.AddChild(toggle)
 	layout.AddChild(control)
 	return layout

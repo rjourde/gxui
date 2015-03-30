@@ -22,14 +22,14 @@ type DropDownList struct {
 
 	outer DropDownListOuter
 
-	theme        gxui.Theme
-	list         gxui.List
-	listShowing  bool
-	itemSize     math.Size
-	overlay      gxui.BubbleOverlay
-	selectedItem gxui.Control
-	onShowList   gxui.Event
-	onHideList   gxui.Event
+	theme       gxui.Theme
+	list        gxui.List
+	listShowing bool
+	itemSize    math.Size
+	overlay     gxui.BubbleOverlay
+	selected    gxui.Control
+	onShowList  gxui.Event
+	onHideList  gxui.Event
 }
 
 func (l *DropDownList) Init(outer DropDownListOuter, theme gxui.Theme) {
@@ -40,16 +40,16 @@ func (l *DropDownList) Init(outer DropDownListOuter, theme gxui.Theme) {
 
 	l.theme = theme
 	l.list = theme.CreateList()
-	l.list.OnSelectionChanged(func(id gxui.AdapterItemId) {
+	l.list.OnSelectionChanged(func(item gxui.AdapterItem) {
 		adapter := l.list.Adapter()
-		if id != gxui.InvalidAdapterItemId && adapter != nil {
-			l.selectedItem = adapter.Create(l.theme, adapter.ItemIndex(id))
+		if item != nil && adapter != nil {
+			l.selected = adapter.Create(l.theme, adapter.ItemIndex(item))
 		} else {
-			l.selectedItem = nil
+			l.selected = nil
 		}
 		l.Relayout()
 	})
-	l.list.OnItemClicked(func(gxui.MouseEvent, gxui.AdapterItemId) {
+	l.list.OnItemClicked(func(gxui.MouseEvent, gxui.AdapterItem) {
 		l.HideList()
 	})
 	l.list.OnKeyPress(func(ev gxui.KeyboardEvent) {
@@ -67,19 +67,25 @@ func (l *DropDownList) Init(outer DropDownListOuter, theme gxui.Theme) {
 }
 
 func (l *DropDownList) LayoutChildren() {
+	if !l.RelayoutSuspended() {
+		// Disable relayout on AddChild / RemoveChild as we're performing layout here.
+		l.SetRelayoutSuspended(true)
+		defer l.SetRelayoutSuspended(false)
+	}
+
 	l.outer.RemoveAll()
 
-	if l.selectedItem != nil {
+	if l.selected != nil {
 		s := l.outer.Bounds().Size().Contract(l.Padding()).Max(math.ZeroSize)
 		o := l.Padding().LT()
-		l.selectedItem.Layout(s.Rect().Offset(o))
-		l.AddChild(l.selectedItem)
+		l.selected.Layout(s.Rect().Offset(o))
+		l.AddChild(l.selected)
 	}
 }
 
 func (l *DropDownList) DesiredSize(min, max math.Size) math.Size {
-	if l.selectedItem != nil {
-		return l.selectedItem.DesiredSize(min, max).Expand(l.outer.Padding()).Clamp(min, max)
+	if l.selected != nil {
+		return l.selected.DesiredSize(min, max).Expand(l.outer.Padding()).Clamp(min, max)
 	} else {
 		return l.itemSize.Expand(l.outer.Padding()).Clamp(min, max)
 	}
@@ -87,7 +93,7 @@ func (l *DropDownList) DesiredSize(min, max math.Size) math.Size {
 
 func (l *DropDownList) DataReplaced() {
 	adapter := l.list.Adapter()
-	itemSize := adapter.ItemSize(l.theme)
+	itemSize := adapter.Size(l.theme)
 	l.itemSize = itemSize
 	l.outer.Relayout()
 }
@@ -148,11 +154,11 @@ func (l *DropDownList) BubbleOverlay() gxui.BubbleOverlay {
 	return l.overlay
 }
 
-func (l *DropDownList) Adapter() gxui.Adapter {
+func (l *DropDownList) Adapter() gxui.ListAdapter {
 	return l.list.Adapter()
 }
 
-func (l *DropDownList) SetAdapter(adapter gxui.Adapter) {
+func (l *DropDownList) SetAdapter(adapter gxui.ListAdapter) {
 	if l.list.Adapter() != adapter {
 		l.list.SetAdapter(adapter)
 		if adapter != nil {
@@ -164,18 +170,18 @@ func (l *DropDownList) SetAdapter(adapter gxui.Adapter) {
 	}
 }
 
-func (l *DropDownList) Selected() gxui.AdapterItemId {
+func (l *DropDownList) Selected() gxui.AdapterItem {
 	return l.list.Selected()
 }
 
-func (l *DropDownList) Select(id gxui.AdapterItemId) {
-	if l.list.Selected() != id {
-		l.list.Select(id)
+func (l *DropDownList) Select(item gxui.AdapterItem) {
+	if l.list.Selected() != item {
+		l.list.Select(item)
 		l.LayoutChildren()
 	}
 }
 
-func (l *DropDownList) OnSelectionChanged(f func(gxui.AdapterItemId)) gxui.EventSubscription {
+func (l *DropDownList) OnSelectionChanged(f func(gxui.AdapterItem)) gxui.EventSubscription {
 	return l.list.OnSelectionChanged(f)
 }
 

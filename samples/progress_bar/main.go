@@ -5,16 +5,14 @@
 package main
 
 import (
-	"flag"
 	"time"
 
 	"github.com/google/gxui"
 	"github.com/google/gxui/drivers/gl"
 	"github.com/google/gxui/math"
+	"github.com/google/gxui/samples/flags"
 	"github.com/google/gxui/themes/dark"
 )
-
-var data = flag.String("data", "", "path to data")
 
 func appMain(driver gxui.Driver) {
 	theme := dark.CreateTheme(driver)
@@ -32,6 +30,7 @@ func appMain(driver gxui.Driver) {
 	layout.SetHorizontalAlignment(gxui.AlignCenter)
 
 	window := theme.CreateWindow(800, 600, "Progress bar")
+	window.SetScale(flags.DefaultScaleFactor)
 	window.AddChild(layout)
 	window.OnClose(driver.Terminate)
 
@@ -39,17 +38,14 @@ func appMain(driver gxui.Driver) {
 	pause := time.Millisecond * 500
 	var timer *time.Timer
 	timer = time.AfterFunc(pause, func() {
-		driver.Events() <- func() {
+		driver.Call(func() {
 			progress = (progress + 3) % progressBar.Target()
 			progressBar.SetProgress(progress)
 			timer.Reset(pause)
-		}
+		})
 	})
-
-	gxui.EventLoop(driver)
 }
 
 func main() {
-	flag.Parse()
-	gl.StartDriver(*data, appMain)
+	gl.StartDriver(appMain)
 }

@@ -21,11 +21,11 @@ type ListOuter interface {
 	PaintBorder(c gxui.Canvas, r math.Rect)
 }
 
-type ListItem struct {
-	Control             gxui.Control
-	Index               int
-	Mark                int
-	OnClickSubscription gxui.EventSubscription
+type itemDetails struct {
+	control             gxui.Control
+	index               int
+	mark                int
+	onClickSubscription gxui.EventSubscription
 }
 
 type List struct {
@@ -36,12 +36,12 @@ type List struct {
 	outer ListOuter
 
 	theme                    gxui.Theme
-	adapter                  gxui.Adapter
+	adapter                  gxui.ListAdapter
 	scrollBar                gxui.ScrollBar
 	scrollBarEnabled         bool
-	selectedId               gxui.AdapterItemId
+	selectedItem             gxui.AdapterItem
 	onSelectionChanged       gxui.Event
-	items                    map[gxui.AdapterItemId]ListItem
+	details                  map[gxui.AdapterItem]itemDetails
 	orientation              gxui.Orientation
 	scrollOffset             int
 	itemSize                 math.Size
@@ -64,12 +64,11 @@ func (l *List) Init(outer ListOuter, theme gxui.Theme) {
 	l.scrollBar = theme.CreateScrollBar()
 	l.scrollBarEnabled = true
 	l.scrollBar.OnScroll(func(from, to int) { l.SetScrollOffset(from) })
-	l.selectedId = gxui.InvalidAdapterItemId
 	l.SetOrientation(gxui.Vertical)
 	l.SetBackgroundBrush(gxui.TransparentBrush)
 	l.SetMouseEventTarget(true)
 
-	l.items = make(map[gxui.AdapterItemId]ListItem)
+	l.details = make(map[gxui.AdapterItem]itemDetails)
 
 	// Interface compliance test
 	_ = gxui.List(l)
@@ -83,10 +82,10 @@ func (l *List) UpdateItemMouseOver() {
 		}
 		return
 	}
-	for _, item := range l.items {
-		if item.Control.Bounds().Contains(l.mousePosition) {
-			if l.itemMouseOver != item.Control {
-				l.itemMouseOver = item.Control
+	for _, details := range l.details {
+		if details.control.Bounds().Contains(l.mousePosition) {
+			if l.itemMouseOver != details.control {
+				l.itemMouseOver = details.control
 				l.Redraw()
 				return
 			}
@@ -98,6 +97,12 @@ func (l *List) LayoutChildren() {
 	if l.adapter == nil {
 		l.outer.RemoveAll()
 		return
+	}
+
+	if !l.RelayoutSuspended() {
+		// Disable relayout on AddChild / RemoveChild as we're performing layout here.
+		l.SetRelayoutSuspended(true)
+		defer l.SetRelayoutSuspended(false)
 	}
 
 	s := l.outer.Bounds().Size().Contract(l.Padding())
@@ -119,26 +124,26 @@ func (l *List) LayoutChildren() {
 	l.layoutMark++
 
 	for idx := startIndex; idx < endIndex; idx++ {
-		id := l.adapter.ItemId(idx)
+		item := l.adapter.ItemAt(idx)
 
-		item, found := l.items[id]
+		details, found := l.details[item]
 		if found {
-			if item.Mark == mark {
-				panic(fmt.Errorf("Adapter returned duplicate id (%v) for indices %v and %v",
-					id, item.Index, idx))
+			if details.mark == mark {
+				panic(fmt.Errorf("Adapter for control '%s' returned duplicate item (%v) for indices %v and %v",
+					gxui.Path(l.outer), item, details.index, idx))
 			}
 		} else {
-			item.Control = l.adapter.Create(l.theme, idx)
-			item.OnClickSubscription = item.Control.OnClick(func(ev gxui.MouseEvent) {
-				l.ItemClicked(ev, id)
+			details.control = l.adapter.Create(l.theme, idx)
+			details.onClickSubscription = details.control.OnClick(func(ev gxui.MouseEvent) {
+				l.ItemClicked(ev, item)
 			})
-			l.AddChildAt(0, item.Control)
+			l.AddChildAt(0, details.control)
 		}
-		item.Mark = mark
-		item.Index = idx
-		l.items[id] = item
+		details.mark = mark
+		details.index = idx
+		l.details[item] = details
 
-		c := item.Control
+		c := details.control
 		cm := c.Margin()
 		cs := itemSize.Contract(cm).Max(math.ZeroSize)
 		if l.orientation.Horizontal() {
@@ -150,11 +155,11 @@ func (l *List) LayoutChildren() {
 	}
 
 	// Reap unused items
-	for id, item := range l.items {
-		if item.Mark != mark {
-			item.OnClickSubscription.Unlisten()
-			l.RemoveChild(item.Control)
-			delete(l.items, id)
+	for item, details := range l.details {
+		if details.mark != mark {
+			details.onClickSubscription.Unlisten()
+			l.RemoveChild(details.control)
+			delete(l.details, item)
 		}
 	}
 
@@ -246,6 +251,9 @@ func (l *List) VisibleItemRange(includePartiallyVisible bool) (startIndex, endIn
 	s := l.outer.Bounds().Size()
 	p := l.outer.Padding()
 	majorAxisItemSize := l.MajorAxisItemSize()
+	if majorAxisItemSize == 0 {
+		return 0, 0
+	}
 	startIndex = l.scrollOffset
 	if !includePartiallyVisible {
 		startIndex += majorAxisItemSize - 1
@@ -264,8 +272,8 @@ func (l *List) VisibleItemRange(includePartiallyVisible bool) (startIndex, endIn
 	return startIndex, endIndex
 }
 
-func (l *List) ItemSizeChanged() {
-	l.itemSize = l.adapter.ItemSize(l.theme)
+func (l *List) SizeChanged() {
+	l.itemSize = l.adapter.Size(l.theme)
 	l.scrollBar.SetScrollLimit(l.itemCount * l.MajorAxisItemSize())
 	l.SetScrollOffset(l.scrollOffset)
 	l.outer.Relayout()
@@ -273,15 +281,15 @@ func (l *List) ItemSizeChanged() {
 
 func (l *List) DataChanged() {
 	l.itemCount = l.adapter.Count()
-	l.ItemSizeChanged()
+	l.SizeChanged()
 }
 
 func (l *List) DataReplaced() {
-	l.selectedId = gxui.InvalidAdapterItemId
-	for id, item := range l.items {
-		item.OnClickSubscription.Unlisten()
-		l.RemoveChild(item.Control)
-		delete(l.items, id)
+	l.selectedItem = nil
+	for item, details := range l.details {
+		details.onClickSubscription.Unlisten()
+		l.RemoveChild(details.control)
+		delete(l.details, item)
 	}
 	l.DataChanged()
 }
@@ -302,20 +310,20 @@ func (l *List) PaintMouseOverBackground(c gxui.Canvas, r math.Rect) {
 }
 
 func (l *List) SelectPrevious() {
-	if l.selectedId != gxui.InvalidAdapterItemId {
-		selectedIndex := l.adapter.ItemIndex(l.selectedId)
-		l.Select(l.adapter.ItemId(math.Mod(selectedIndex-1, l.itemCount)))
+	if l.selectedItem != nil {
+		selectedIndex := l.adapter.ItemIndex(l.selectedItem)
+		l.Select(l.adapter.ItemAt(math.Mod(selectedIndex-1, l.itemCount)))
 	} else {
-		l.Select(l.adapter.ItemId(0))
+		l.Select(l.adapter.ItemAt(0))
 	}
 }
 
 func (l *List) SelectNext() {
-	if l.selectedId != gxui.InvalidAdapterItemId {
-		selectedIndex := l.adapter.ItemIndex(l.selectedId)
-		l.Select(l.adapter.ItemId(math.Mod(selectedIndex+1, l.itemCount)))
+	if l.selectedItem != nil {
+		selectedIndex := l.adapter.ItemIndex(l.selectedItem)
+		l.Select(l.adapter.ItemAt(math.Mod(selectedIndex+1, l.itemCount)))
 	} else {
-		l.Select(l.adapter.ItemId(0))
+		l.Select(l.adapter.ItemAt(0))
 	}
 }
 
@@ -326,8 +334,8 @@ func (l *List) PaintChild(c gxui.Canvas, child gxui.Control, idx int) {
 		l.outer.PaintMouseOverBackground(c, b)
 	}
 	l.PaintChildren.PaintChild(c, child, idx)
-	if selected, found := l.items[l.selectedId]; found {
-		if child == selected.Control {
+	if selected, found := l.details[l.selectedItem]; found {
+		if child == selected.control {
 			b := child.Bounds().Expand(child.Margin())
 			l.outer.PaintSelection(c, b)
 		}
@@ -399,11 +407,11 @@ func (l *List) KeyPress(ev gxui.KeyboardEvent) (consume bool) {
 }
 
 // gxui.List compliance
-func (l *List) Adapter() gxui.Adapter {
+func (l *List) Adapter() gxui.ListAdapter {
 	return l.adapter
 }
 
-func (l *List) SetAdapter(adapter gxui.Adapter) {
+func (l *List) SetAdapter(adapter gxui.ListAdapter) {
 	if l.adapter != adapter {
 		if l.adapter != nil {
 			l.dataChangedSubscription.Unlisten()
@@ -430,8 +438,8 @@ func (l *List) SetOrientation(o gxui.Orientation) {
 	}
 }
 
-func (l *List) ScrollTo(id gxui.AdapterItemId) {
-	idx := l.adapter.ItemIndex(id)
+func (l *List) ScrollTo(item gxui.AdapterItem) {
+	idx := l.adapter.ItemIndex(item)
 	startIndex, endIndex := l.VisibleItemRange(false)
 	if idx < startIndex {
 		if l.Orientation().Horizontal() {
@@ -449,48 +457,52 @@ func (l *List) ScrollTo(id gxui.AdapterItemId) {
 	}
 }
 
-func (l *List) IsItemVisible(id gxui.AdapterItemId) bool {
-	_, found := l.items[id]
+func (l *List) IsItemVisible(item gxui.AdapterItem) bool {
+	_, found := l.details[item]
 	return found
 }
 
-func (l *List) Item(id gxui.AdapterItemId) gxui.Control {
-	if item, found := l.items[id]; found {
-		return item.Control
+func (l *List) ItemControl(item gxui.AdapterItem) gxui.Control {
+	if item, found := l.details[item]; found {
+		return item.control
 	}
 	return nil
 }
 
-func (l *List) ItemClicked(ev gxui.MouseEvent, id gxui.AdapterItemId) {
+func (l *List) ItemClicked(ev gxui.MouseEvent, item gxui.AdapterItem) {
 	if l.onItemClicked != nil {
-		l.onItemClicked.Fire(ev, id)
+		l.onItemClicked.Fire(ev, item)
 	}
-	l.Select(id)
+	l.Select(item)
 }
 
-func (l *List) OnItemClicked(f func(gxui.MouseEvent, gxui.AdapterItemId)) gxui.EventSubscription {
+func (l *List) OnItemClicked(f func(gxui.MouseEvent, gxui.AdapterItem)) gxui.EventSubscription {
 	if l.onItemClicked == nil {
 		l.onItemClicked = gxui.CreateEvent(f)
 	}
 	return l.onItemClicked.Listen(f)
 }
 
-func (l *List) Selected() gxui.AdapterItemId {
-	return l.selectedId
+func (l *List) Selected() gxui.AdapterItem {
+	return l.selectedItem
 }
 
-func (l *List) Select(id gxui.AdapterItemId) {
-	if l.selectedId != id {
-		l.selectedId = id
+func (l *List) Select(item gxui.AdapterItem) bool {
+	if l.selectedItem != item {
+		if l.adapter.ItemIndex(item) < 0 {
+			return false // Adapter does not contain the item
+		}
+		l.selectedItem = item
 		if l.onSelectionChanged != nil {
-			l.onSelectionChanged.Fire(id)
+			l.onSelectionChanged.Fire(item)
 		}
 		l.Redraw()
 	}
-	l.ScrollTo(id)
+	l.ScrollTo(item)
+	return true
 }
 
-func (l *List) OnSelectionChanged(f func(gxui.AdapterItemId)) gxui.EventSubscription {
+func (l *List) OnSelectionChanged(f func(gxui.AdapterItem)) gxui.EventSubscription {
 	if l.onItemClicked == nil {
 		l.onSelectionChanged = gxui.CreateEvent(f)
 	}

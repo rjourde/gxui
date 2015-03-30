@@ -5,16 +5,14 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 
 	"github.com/google/gxui"
 	"github.com/google/gxui/drivers/gl"
 	"github.com/google/gxui/math"
+	"github.com/google/gxui/samples/flags"
 	"github.com/google/gxui/themes/dark"
 )
-
-var data = flag.String("data", "", "path to data")
 
 func vertexAt(p gxui.Polygon, at math.Point) int {
 	for i, v := range p {
@@ -144,6 +142,7 @@ func appMain(driver gxui.Driver) {
 
 	update()
 	window := theme.CreateWindow(800, 600, "Polygon editor")
+	window.SetScale(flags.DefaultScaleFactor)
 	window.AddChild(image)
 	window.OnClose(driver.Terminate)
 	window.OnKeyDown(func(ev gxui.KeyboardEvent) {
@@ -160,10 +159,8 @@ func appMain(driver gxui.Driver) {
 			}
 		}
 	})
-	gxui.EventLoop(driver)
 }
 
 func main() {
-	flag.Parse()
-	gl.StartDriver(*data, appMain)
+	gl.StartDriver(appMain)
 }

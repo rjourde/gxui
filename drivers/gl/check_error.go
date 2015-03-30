@@ -7,10 +7,10 @@ package gl
 import (
 	"fmt"
 
-	"github.com/go-gl/gl/v3.2-core/gl"
+	"github.com/go-gl/gl/v2.1/gl"
 )
 
-func CheckError() {
+func checkError() {
 	if v := gl.GetError(); v != 0 {
 		switch v {
 		case gl.INVALID_ENUM:

@@ -70,7 +70,7 @@ func (t *CodeEditorLine) PaintGlyphs(c gxui.Canvas, info CodeEditorLinePaintInfo
 			for _, span := range l.Spans().Overlaps(info.LineSpan) {
 				interval.Visit(&remaining, span, func(vs, ve uint64, _ int) {
 					s, e := vs-start, ve-start
-					c.DrawRunes(font, runes[s:e], color, offsets[s:e], math.Point{})
+					c.DrawRunes(font, runes[s:e], offsets[s:e], color)
 				})
 				interval.Remove(&remaining, span)
 			}
@@ -79,7 +79,7 @@ func (t *CodeEditorLine) PaintGlyphs(c gxui.Canvas, info CodeEditorLinePaintInfo
 	for _, span := range remaining {
 		s, e := span.Span()
 		s, e = s-start, e-start
-		c.DrawRunes(font, runes[s:e], t.ce.textColor, offsets[s:e], math.Point{})
+		c.DrawRunes(font, runes[s:e], offsets[s:e], t.ce.textColor)
 	}
 }
 
@@ -112,12 +112,16 @@ func (t *CodeEditorLine) Paint(c gxui.Canvas) {
 
 		lineHeight := t.Bounds().Size().H
 		glyphWidth := font.GlyphMaxSize().W
-		offsets := make([]math.Point, len(runes))
-		font.LayoutRunes(offsets, runes, rect, gxui.AlignLeft, gxui.AlignMiddle)
+		offsets := font.Layout(&gxui.TextBlock{
+			Runes:     runes,
+			AlignRect: rect,
+			H:         gxui.AlignLeft,
+			V:         gxui.AlignMiddle,
+		})
 
 		info := CodeEditorLinePaintInfo{
 			LineSpan:     lineSpan,
-			Runes:        runes,
+			Runes:        runes, // TODO gxui.TextBlock?
 			GlyphOffsets: offsets,
 			GlyphWidth:   glyphWidth,
 			LineHeight:   lineHeight,
